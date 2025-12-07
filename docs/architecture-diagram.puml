@@ -1,0 +1,137 @@
+@startuml WhatsApp-Inspired Chat Service Architecture
+
+!define RECTANGLE class
+
+' Define colors
+skinparam backgroundColor #FFFFFF
+skinparam component {
+  BackgroundColor<<client>> LightBlue
+  BackgroundColor<<edge>> LightGreen
+  BackgroundColor<<core>> Orange
+  BackgroundColor<<storage>> LightYellow
+  BackgroundColor<<supporting>> LightGray
+}
+
+' Title
+title WhatsApp-Inspired Chat Service Architecture\n(Production-Ready Reference)
+
+' Clients
+package "Client Layer" <<client>> {
+  [Web Client\n(WebSocket)] as WebClient
+  [iOS App\n(Socket)] as iOS
+  [Android App\n(Socket)] as Android
+  [Push Notifications\nAPNs / FCM] as Push
+}
+
+' Edge & API Tier
+package "Edge & API Tier" <<edge>> {
+  [Load Balancer\nNGINX / Envoy] as LB
+  [API Gateway\n(REST/Auth)] as API
+}
+
+' Real-time Messaging Tier
+package "Real-time Messaging Tier" <<core>> {
+  [WebSocket Servers\n(Stateless)] as WSServers
+  [Message Router\n(Partition/Shard)] as Router
+  [Presence Service\n(Redis)] as Presence
+  [Worker Pool\n(Actor Model)] as Workers
+}
+
+' Message Processing
+package "Message Processing & Delivery" <<core>> {
+  [Kafka / Redis Streams\n(Message Queue)] as Kafka
+  [Delivery Service\n(Consumer)] as Delivery
+  [Message Persistence\n(Writer)] as Persister
+}
+
+' Storage Layer
+package "Storage Layer" <<storage>> {
+  database "Cassandra/ScyllaDB\n(Message History)" as Cassandra
+  database "PostgreSQL\n(Metadata)" as Postgres
+  database "Redis Cluster\n(Cache/Presence)" as Redis
+  storage "S3 / MinIO\n(Media Storage)" as S3
+  cloud "CDN\n(CloudFront)" as CDN
+}
+
+' Background & Supporting Systems
+package "Supporting Systems" <<supporting>> {
+  [Worker Queues\n(Background Jobs)] as BgWorkers
+  [Search Index\n(Elasticsearch)] as Search
+  [Monitoring\n(Prometheus/Grafana)] as Monitor
+  [Tracing\n(Jaeger/OTEL)] as Trace
+  [Push Service\n(FCM/APNs)] as PushService
+}
+
+' Client to Edge connections
+WebClient --> LB : WebSocket/TLS
+iOS --> LB : Socket/TLS
+Android --> LB : Socket/TLS
+Push ..> iOS : Offline notifications
+Push ..> Android : Offline notifications
+
+' Edge to Real-time tier
+LB --> WSServers : Route connections
+API --> WSServers : REST → Events
+
+' Real-time message flow
+WSServers --> Router : Message events
+Router --> Presence : Check user status
+Router --> Kafka : Publish message
+Router --> Workers : Process shard
+Workers --> Presence : Update presence
+
+' Message delivery flow
+Kafka --> Delivery : Consume messages
+Delivery --> WSServers : Push to connected clients
+Delivery --> Persister : Store message
+Delivery --> PushService : Send push (if offline)
+
+' Storage interactions
+Persister --> Cassandra : Write message history
+Persister --> Postgres : Store metadata
+WSServers --> Redis : Read/Write presence
+Router --> Redis : Get routing info
+
+' Media flow
+WSServers --> S3 : Upload media
+S3 --> CDN : Serve via CDN
+CDN ..> WebClient : Fast media delivery
+CDN ..> iOS : Fast media delivery
+CDN ..> Android : Fast media delivery
+
+' Background systems
+Kafka --> BgWorkers : Analytics, processing
+BgWorkers --> Search : Index messages
+BgWorkers --> Monitor : Send metrics
+WSServers --> Monitor : Metrics/logs
+Router --> Monitor : Metrics/logs
+Delivery --> Monitor : Metrics/logs
+WSServers --> Trace : Distributed traces
+PushService --> Push : FCM/APNs API
+
+' Annotations
+note right of Router
+  Consistent hashing by
+  user_id or conversation_id
+  for predictable sharding
+end note
+
+note bottom of Cassandra
+  High write throughput
+  Tunable consistency
+  Time-series optimized
+end note
+
+note top of Kafka
+  Ordered, durable streams
+  Per-partition ordering
+  Replay capability
+end note
+
+note left of Presence
+  Fast in-memory store
+  User online status
+  Routing table
+end note
+
+@enduml
